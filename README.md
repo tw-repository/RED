@@ -93,6 +93,69 @@ The training script evaluates the configured test split after each epoch. It rep
 
 For evidence visualization, `network.forward()` returns `(logits, visualization_info)`. The dictionary contains `heatmap_1x1`, `heatmap_2x2`, `heatmap_4x4`, and `heatmap_fused`. Each map has shape `[R, 1, 224, 224]`, where `R` is the total number of target pairs in the batch.
 
+## Visualizing R<sup>2</sup>oIs
+
+`draw_R2oIs.py` renders the highest-scoring attention windows at three scales and combines their heatmaps using spatial overlap. Install Matplotlib in the training environment.
+
+```bash
+python -m pip install matplotlib
+```
+
+Use a trained RED checkpoint and the ViT-L/16 backbone checkpoint. Set `--mode` to the benchmark used to train the model (`PISC_Coarse`, `PISC_Fine`, or `PIPA`). The examples below use PISC-F and `cuda:0`. Use `--device cpu` for CPU inference.
+
+### Single image
+
+This mode reuses the full image for the two person crops and the union crop, with zero-valued masks and geometry. Use it to preview the heatmaps on a standalone image.
+
+```bash
+python draw_R2oIs.py \
+  --input_mode single \
+  --mode PISC_Fine \
+  --network_file ./network_pced.py \
+  --checkpoint /path/to/PISC_Fine_checkpoint.pth.tar \
+  --vit_checkpoint /path/to/jx_vit_large_p16_224-4ee7a4dc.pth \
+  --image_path /path/to/image.jpg \
+  --output_dir heatmaps/single \
+  --device cuda:0
+```
+
+### Annotated test set
+
+Use the test annotations to visualize evidence for annotated person pairs. For PISC, the script looks for one correct and one incorrect prediction per ground-truth class. For PIPA, `--pipa_correct` and `--pipa_incorrect` control the requested number of examples across classes, with three of each by default.
+
+```bash
+python draw_R2oIs.py \
+  --input_mode dataset \
+  --mode PISC_Fine \
+  --network_file ./network_pced.py \
+  --dataset_module ./dataset_llm.py \
+  --checkpoint /path/to/PISC_Fine_checkpoint.pth.tar \
+  --vit_checkpoint /path/to/jx_vit_large_p16_224-4ee7a4dc.pth \
+  --dataset_root /path/to/PISC/images \
+  --annotation_file /path/to/PISCF_test.pkl \
+  --output_dir heatmaps/PISC_Fine \
+  --device cuda:0
+```
+
+### Outputs
+
+The script saves four PNG overlays per example. `scale1x1.png`, `scale2x2.png`, and `scale4x4.png` show the individual scales. `fused_overlap_average.png` shows the fused evidence. Files are organized under `<output_dir>/<ground_truth_label>/<status>_pred_<class_id>/<image_stem>/`. For a single image without a label, both the ground-truth label and status are `unknown`. Class labels default to `class_<id>`. To use descriptive labels, pass a comma-separated list to `--class_names` in checkpoint class-index order.
+
+### Rendering options
+
+| Argument | Default | Effect |
+| --- | --- | --- |
+| `--top_k` | `10` | Number of highest-scoring attention windows rendered at each scale. |
+| `--sigma_factor` | `0.5` | Gaussian spread relative to window width. Increase it for wider hotspots. |
+| `--alpha` | `0.55` | Maximum opacity of the overlay. |
+| `--heat_strength` | `1.0` | Multiplier for the heatmap intensity before color mapping. |
+| `--gamma` | `0.75` | Contrast of each normalized scale map. Values below 1 boost weaker responses. |
+| `--colormap` | `turbo` | Matplotlib colormap for the overlays. |
+| `--fusion_threshold` | `0.05` | Center of the activation threshold for each scale's contribution to fusion. |
+| `--fusion_transition` | `0.04` | Half-width of the soft transition around the fusion threshold. |
+| `--fusion_overlap_radius` | `6` | Support expansion radius in pixels on the 224×224 heatmap grid. |
+| `--fusion_blur` | `2.0` | Gaussian smoothing radius for the fusion masks and fused map. |
+
 ## Contact
 
 For questions about the paper or code, open a GitHub issue or contact [Wang Tang](mailto:wangtang@cuit.edu.cn).
